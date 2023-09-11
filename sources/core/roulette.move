@@ -2,29 +2,23 @@ module roulette::roulette {
   use sui::tx_context::{TxContext, sender};
   use sui::object::{Self, UID, uid_to_address};
   use sui::transfer::{transfer, share_object, public_transfer};
-  use sui::clock::{Self, Clock};
+  use sui::clock::{Self, Clock, timestamp_ms};
   use std::option::{Self, Option};
   use sui::vec_map::{Self, VecMap};
-  use sui::coin::{Coin, value, split, into_balance, join};
-  use sui::balance::{Self, Balance};
+  use sui::coin::{Coin, value, split, into_balance, take};
+  use sui::balance::{Self, Balance, join, value};
   use roulette::drand::{verify_drand_signature, derive_randomness, safe_selection};
 
   // errors
-  let E_INVALID_COIN_VALUE: u64 = 0;
-  let E_COIN_NOT_SUPPORTED: u64 = 1;
+  const E_INVALID_COIN_VALUE: u64 = 0;
   
   /// Capability allowing the bearer to execute admin related tasks
   struct AdminCap has key {id: UID}
   
-  struct Config has key {
+  struct Config<phantom T> has key {
     id: UID,
-    /// The address that will be receiving the funds from the ticket purchases
-    treasury: address,
     /// The pool of roulette
     pool: Balance<T>,
-    /// The list of supported coins that can be used in purchases. The string value is the hash of sui::type_name::TypeName
-    /// Note it's the TypeName of T not Coin<T>
-    supported_coins: VecMap<vector<u8>, bool>,
     /// The range of roulette. Default value is 50
     range: u8,
     /// The minimum amount of bet
@@ -50,16 +44,27 @@ module roulette::roulette {
     };
     let config = Config {
       id: object::new(ctx),
-      treasury: sender(ctx),
-      supported_coins: vec_map::empty(),
+      pool: balance::zero(),
       range: 50,
+      min_value: 0,
+      max_value: 0,
+      rate: 0,
     };
     
     transfer(admin_cap, sender(ctx));
     share_object(config);
   }
 
-  [#view]
+  public fun get_config_data(self: &Config): (u64, u8, u64, u64, u64) {
+    (
+      value(&self.pool),
+      self.range,
+      self.min_value,
+      self.max_value,
+      self.rate,
+    )
+  }
+
   public fun get_entity_data(self: &RouletteEntity): (address, u8, u64, u64) {
     (
       self.player,
@@ -69,8 +74,8 @@ module roulette::roulette {
     )
   }
 
-  public entity fun play(
-    config: &Config,
+  public entity fun play<T>(
+    config: &mut Config<T>,
     drand_sig: vector<u8>,
     drand_prev_sig: vector<u8>,
     bet_values: vector<u8>,
@@ -78,34 +83,30 @@ module roulette::roulette {
     clock: &Clock,
     ctx: &mut TxContext
   ) {
-    // Check that Coin is supported
-    let coin_type = ascii::into_bytes(
-      type_name::into_string(type_name::get<T>())
-    );
-    assert!(is_coin_supported(config, &coin_type), E_COIN_NOT_SUPPORTED);
-    assert!(into_balance(coins) >= config.min_value, E_INVALID_COIN_VALUE);
-    assert!(into_balance(coins) <= config.max_value, E_INVALID_COIN_VALUE);
+    let value = into_balance(coins).value();
 
-    let now = clock::timestamp_ms(clock);
+    assert!(value >= config.min_value, E_INVALID_COIN_VALUE);
+    assert!(value <= config.max_value, E_INVALID_COIN_VALUE);
 
-    verify_drand_signature(drand_sig, drand_prev_sig, 0);
+    verify_drand_signature(drand_sig, drand_prev_sig);
 
-    let digest = derive_randomness(drand_sig);
-    let random = safe_selection(config.range, &digest);
+    let digest = derive_randomness(drand_sig, timestamp_ms(clock));
+    let random = safe_selection(config.range, &digest) + 1;
 
     let entity = RouletteEntity {
       id: object::new(ctx),
       player: sender(ctx),
       random: random,
-      amount: into_balance(coins),
+      amount: value,
       prize: 0,
     }
     let winned = vector::contains(&bet_values, random);
     /// transfer funds to contract
-    public_transfer(split(coins, into_balance(coins), ctx), config.treasury);
+    join(config.pool, into_balance(coin));
     if(winned) {
       entity.prize = value(coins) * config.range * config.rate / vector::length(bet_values) / 10000;
       /// transfer funds to player
+      public_transfer(split(config.pool, entity.prize, sender(ctx)));
     }
 
     share_object(entity);
@@ -115,40 +116,37 @@ module roulette::roulette {
   /// 
   /// # Auth
   /// - Only bearer of the AdminCap is allowed to call this function
-  /// 
-  /// # Arguments
-  /// * `treasury` - The address that will be receiving the funds from the ticket purchases
-  public entry fun update_config(
-    _cap: &AdminCap,
-    config: &mut Config,
-    treasury: address,
-    supported_coins: vector<ascii::String>,
+  public entry fun update_config<T>(
+    _: &AdminCap,
+    config: &mut Config<T>,
     range: u8,
     min_value: u64,
     max_value: u64,
     rate: u64,
+    coins: Coin<T>
   ) {
-    config.supported_coins = vec_map::empty();
-    config.treasury = treasury;
     config.range = range;
     config.min_value = min_value;
     config.max_value = max_value;
     config.rate = rate;
-
-    let len = vector::length(&supported_coins);
-    let i = 0;
-
-    while (i < len) {
-      let coin_type = *vector::borrow(&supported_coins, i);
-      let key = ascii::into_bytes(coin_type);
-      vec_map::insert(&mut config.supported_coins, key, true);
-
-      i = i + 1;
-    };
+    config.pool = join(config.pool, into_balance(coins));
   }
 
-  /// CHecks if the given coin type is supported
-  public fun is_coin_supported(config: &Config, coin_type: &vector<u8>): bool {
-    vec_map::contains(&config.supported_coins, coin_type)
+  
+  public entry fun withdraw<T>(
+    _: &AdminCap,
+    config: &mut Config<T>,
+    amount: u64,
+    recipient: address,
+    ctx: &mut TxContext
+  ) {
+    assert!(amount <= value(&config.pool), EPoolNotEnough);
+    let coin = take(&mut config.pool, amount, ctx);
+    public_transfer(coin, recipient);
+  }
+  
+  #[test_only]
+  public fun test_init(ctx: &mut TxContext) {
+    init(ctx)
   }
 }

@@ -15,21 +15,7 @@ module roulette::drand {
   const DRAND_PK: vector<u8> = x"868f005eb8e6e4ca0a47c8a77ceaa5309a47978a7c71bc5cce96366b5d7a569937c529eeda66c7293784a9402801af31";
 
   /// Check a drand output.
-  public fun verify_drand_signature(sig: vector<u8>, prev_sig: vector<u8>, round: u64) {
-    // Convert round to a byte array in big-endian order.
-    let round_bytes: vector<u8> = vector[0, 0, 0, 0, 0, 0, 0, 0];
-    let i = 7;
-
-    while (i > 0) {
-      let curr_byte = round % 0x100;
-      let curr_element = vector::borrow_mut(&mut round_bytes, i);
-      *curr_element = (curr_byte as u8);
-      round = round >> 8;
-      i = i - 1;
-    };
-
-    // Compute sha256(prev_sig, round_bytes).
-    vector::append(&mut prev_sig, round_bytes);
+  public fun verify_drand_signature(sig: vector<u8>, prev_sig: vector<u8>) {
     let digest = sha2_256(prev_sig);
 
     // Verify the signature on the hash.
@@ -37,7 +23,21 @@ module roulette::drand {
   }
 
   /// Derive a uniform vector from a drand signature.
-  public fun derive_randomness(drand_sig: vector<u8>): vector<u8> {
+  public fun derive_randomness(drand_sig: vector<u8>, timestamp: u64): vector<u8> {
+    // Convert timestamp to a byte array in big-endian order.
+    let timestamp_bytes: vector<u8> = vector[0, 0, 0, 0, 0, 0, 0, 0];
+    let i = 7;
+
+    while (i > 0) {
+      let curr_byte = timestamp % 0x100;
+      let curr_element = vector::borrow_mut(&mut timestamp_bytes, i);
+      *curr_element = (curr_byte as u8);
+      timestamp = timestamp >> 8;
+      i = i - 1;
+    };
+
+    // Compute sha256(drand_sig, timestamp_bytes).
+    vector::append(&mut drand_sig, timestamp_bytes);
     sha2_256(drand_sig)
   }
 
