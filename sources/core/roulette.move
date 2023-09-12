@@ -104,6 +104,7 @@ module roulette::roulette {
 
     let use_hash = get_seed_use_hash(drand_seed, sender(ctx));
     assert!(validate_seed_use(&config.seed_uses, &use_hash) == false, E_USED_SEED);
+    vec_map::insert(&mut config.seed_uses, use_hash, true);
 
     verify_drand_signature(drand_sig, drand_seed);
 

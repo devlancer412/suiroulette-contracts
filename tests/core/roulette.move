@@ -120,6 +120,199 @@ module roulette::roulette_test {
   }
 
   #[test]
+  #[expected_failure(abort_code=roulette::drand::E_INVALID_PROOF)]
+  fun test_play_signature_validation_invalid() {
+    let admin_scenario = begin(admin());
+    setup(&mut admin_scenario);
+    let config = take_shared<RoundConfig<SUI>>(&mut admin_scenario);
+    end(admin_scenario);
+
+    let seed = x"0000000000000000000000000000000000000000000000000000000000000123";
+    let sign_invalid = x"a66f3cdf1147339a3f0021180ba6d178219423ec8f8c69a0059efbca4e6732b1e2cfbbba9a7b2eed315bbf684221668a10563f05345e30c994c50e8f0023dea77133b740a18074bbc77154ee27d4add019406d086f19ea36b1a24c89d1a52a8b";
+
+    let player_scenario = begin(player());
+    let coins = mint_for_testing<SUI>(to_base(1), ctx(&mut player_scenario));
+    next_tx(&mut player_scenario, player());
+    let clock = create_for_testing(ctx(&mut player_scenario));
+    let bet_values = vector[1];
+
+    play(
+      &mut config,
+      sign_invalid,
+      seed,
+      bet_values,
+      coins,
+      &clock,
+      ctx(&mut player_scenario)
+    );
+    next_tx(&mut player_scenario, player());
+
+    return_shared(config);
+    destroy_for_testing(clock);
+    end(player_scenario);
+  }
+
+  #[test]
+  #[expected_failure(abort_code=roulette::roulette::E_INVALID_COIN_VALUE)]
+  fun test_play_min_value_validation_invalid() {
+    let admin_scenario = begin(admin());
+    setup(&mut admin_scenario);
+    let config = take_shared<RoundConfig<SUI>>(&mut admin_scenario);
+    end(admin_scenario);
+
+    let seed = x"0000000000000000000000000000000000000000000000000000000000000123";
+    let sign = x"a66f3cdf1147339a3f0021180ba6d178219423ec8f8c69a0059efbca4e6732b1e2cfbbba9a7b2eed315bbf684221668a10563f05345e30c994c50e8f0023dea77133b740a18074bbc77154ee27d4add019406d086f19ea36b1a24c89d1a52a8a";
+
+    let player_scenario = begin(player());
+    let coins = mint_for_testing<SUI>(to_base(1) / 10, ctx(&mut player_scenario));
+    next_tx(&mut player_scenario, player());
+    let clock = create_for_testing(ctx(&mut player_scenario));
+    let bet_values = vector[1];
+
+    play(
+      &mut config,
+      sign,
+      seed,
+      bet_values,
+      coins,
+      &clock,
+      ctx(&mut player_scenario)
+    );
+    next_tx(&mut player_scenario, player());
+
+    return_shared(config);
+    destroy_for_testing(clock);
+    end(player_scenario);
+  }
+
+  #[test]
+  #[expected_failure(abort_code=roulette::roulette::E_INVALID_COIN_VALUE)]
+  fun test_play_max_value_validation_invalid() {
+    let admin_scenario = begin(admin());
+    setup(&mut admin_scenario);
+    let config = take_shared<RoundConfig<SUI>>(&mut admin_scenario);
+    end(admin_scenario);
+
+    let seed = x"0000000000000000000000000000000000000000000000000000000000000123";
+    let sign = x"a66f3cdf1147339a3f0021180ba6d178219423ec8f8c69a0059efbca4e6732b1e2cfbbba9a7b2eed315bbf684221668a10563f05345e30c994c50e8f0023dea77133b740a18074bbc77154ee27d4add019406d086f19ea36b1a24c89d1a52a8a";
+
+    let player_scenario = begin(player());
+    let coins = mint_for_testing<SUI>(to_base(11), ctx(&mut player_scenario));
+    next_tx(&mut player_scenario, player());
+    let clock = create_for_testing(ctx(&mut player_scenario));
+    let bet_values = vector[1];
+
+    play(
+      &mut config,
+      sign,
+      seed,
+      bet_values,
+      coins,
+      &clock,
+      ctx(&mut player_scenario)
+    );
+    next_tx(&mut player_scenario, player());
+
+    return_shared(config);
+    destroy_for_testing(clock);
+    end(player_scenario);
+  }
+
+  #[test]
+  #[expected_failure(abort_code=roulette::roulette::E_ROUND_NOT_AVAILABLE)]
+  fun test_play_total_amount_validation_invalid() {
+    let admin_scenario = begin(admin());
+    setup(&mut admin_scenario);
+    let config = take_shared<RoundConfig<SUI>>(&mut admin_scenario);
+    
+    let admin_cap = take_from_sender<AdminCap>(&mut admin_scenario);
+    let coins = mint_for_testing<SUI>(to_base(10), ctx(&mut admin_scenario));
+    next_tx(&mut admin_scenario, admin());
+
+    update_config(
+      &admin_cap,
+      &mut config,
+      50,
+      to_base(1),
+      to_base(10),
+      to_base(1) / 10,
+      9400,
+      coins
+    );
+    return_to_sender(&mut admin_scenario, admin_cap);
+    end(admin_scenario);
+
+    let seed = x"0000000000000000000000000000000000000000000000000000000000000123";
+    let sign = x"a66f3cdf1147339a3f0021180ba6d178219423ec8f8c69a0059efbca4e6732b1e2cfbbba9a7b2eed315bbf684221668a10563f05345e30c994c50e8f0023dea77133b740a18074bbc77154ee27d4add019406d086f19ea36b1a24c89d1a52a8a";
+
+    let player_scenario = begin(player());
+    coins = mint_for_testing<SUI>(to_base(1), ctx(&mut player_scenario));
+    next_tx(&mut player_scenario, player());
+    let clock = create_for_testing(ctx(&mut player_scenario));
+    let bet_values = vector[1];
+
+    play(
+      &mut config,
+      sign,
+      seed,
+      bet_values,
+      coins,
+      &clock,
+      ctx(&mut player_scenario)
+    );
+    next_tx(&mut player_scenario, player());
+
+    return_shared(config);
+    destroy_for_testing(clock);
+    end(player_scenario);
+  }
+
+  #[test]
+  #[expected_failure(abort_code=roulette::roulette::E_USED_SEED)]
+  fun test_play_seed_use_validation_invalid() {
+    let admin_scenario = begin(admin());
+    setup(&mut admin_scenario);
+    let config = take_shared<RoundConfig<SUI>>(&mut admin_scenario);
+    end(admin_scenario);
+
+    let seed = x"0000000000000000000000000000000000000000000000000000000000000123";
+    let sign = x"a66f3cdf1147339a3f0021180ba6d178219423ec8f8c69a0059efbca4e6732b1e2cfbbba9a7b2eed315bbf684221668a10563f05345e30c994c50e8f0023dea77133b740a18074bbc77154ee27d4add019406d086f19ea36b1a24c89d1a52a8a";
+
+    let player_scenario = begin(player());
+    let coins = mint_for_testing<SUI>(to_base(1), ctx(&mut player_scenario));
+    next_tx(&mut player_scenario, player());
+    let clock = create_for_testing(ctx(&mut player_scenario));
+    let bet_values = vector[1];
+
+    play(
+      &mut config,
+      sign,
+      seed,
+      bet_values,
+      coins,
+      &clock,
+      ctx(&mut player_scenario)
+    );
+    next_tx(&mut player_scenario, player());
+    // try again with same seed
+    coins = mint_for_testing<SUI>(to_base(1), ctx(&mut player_scenario));
+    play(
+      &mut config,
+      sign,
+      seed,
+      bet_values,
+      coins,
+      &clock,
+      ctx(&mut player_scenario)
+    );
+    next_tx(&mut player_scenario, player());
+
+    return_shared(config);
+    destroy_for_testing(clock);
+    end(player_scenario);
+  }
+
+  #[test]
   fun test_prize_of_game() {
     let admin_scenario = begin(admin());
     setup(&mut admin_scenario);
