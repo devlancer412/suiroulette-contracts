@@ -1,16 +1,16 @@
 module roulette::roulette {
+  use std::vector;
   use sui::tx_context::{TxContext, sender};
-  use sui::object::{Self, UID, uid_to_address};
+  use sui::object::{Self, UID};
   use sui::transfer::{transfer, share_object, public_transfer};
-  use sui::clock::{Self, Clock, timestamp_ms};
-  use std::option::{Self, Option};
-  use sui::vec_map::{Self, VecMap};
-  use sui::coin::{Coin, value, split, into_balance, take};
-  use sui::balance::{Self, Balance, join, value};
+  use sui::clock::{Clock, timestamp_ms};
+  use sui::coin::{Coin, into_balance, take};
+  use sui::balance::{Balance, join, value};
   use roulette::drand::{verify_drand_signature, derive_randomness, safe_selection};
 
   // errors
   const E_INVALID_COIN_VALUE: u64 = 0;
+  const E_POOL_NOT_ENOUGH: u64 = 1;
   
   /// Capability allowing the bearer to execute admin related tasks
   struct AdminCap has key {id: UID}
@@ -30,11 +30,11 @@ module roulette::roulette {
   }
 
   struct RouletteEntity has key {
-    id: UID
-    player: address
-    random: u8
-    amount: u64
-    prize: u64
+    id: UID,
+    player: address,
+    random: u8,
+    amount: u64,
+    prize: u64,
   }
 
   // init
@@ -42,22 +42,13 @@ module roulette::roulette {
     let admin_cap = AdminCap {
       id: object::new(ctx),
     };
-    let config = Config {
-      id: object::new(ctx),
-      pool: balance::zero(),
-      range: 50,
-      min_value: 0,
-      max_value: 0,
-      rate: 0,
-    };
     
     transfer(admin_cap, sender(ctx));
-    share_object(config);
   }
 
-  public fun get_config_data(self: &Config): (u64, u8, u64, u64, u64) {
+  public fun get_config_data<T>(self: &Config<T>): (u64, u8, u64, u64, u64) {
     (
-      value(&self.pool),
+      value<T>(&self.pool),
       self.range,
       self.min_value,
       self.max_value,
@@ -74,7 +65,7 @@ module roulette::roulette {
     )
   }
 
-  public entity fun play<T>(
+  public entry fun play<T>(
     config: &mut Config<T>,
     drand_sig: vector<u8>,
     drand_prev_sig: vector<u8>,
@@ -83,10 +74,11 @@ module roulette::roulette {
     clock: &Clock,
     ctx: &mut TxContext
   ) {
-    let value = into_balance(coins).value();
+    let input_balance = into_balance(coins);
+    let input_value = value(&input_balance);
 
-    assert!(value >= config.min_value, E_INVALID_COIN_VALUE);
-    assert!(value <= config.max_value, E_INVALID_COIN_VALUE);
+    assert!(input_value >= config.min_value, E_INVALID_COIN_VALUE);
+    assert!(input_value <= config.max_value, E_INVALID_COIN_VALUE);
 
     verify_drand_signature(drand_sig, drand_prev_sig);
 
@@ -97,19 +89,45 @@ module roulette::roulette {
       id: object::new(ctx),
       player: sender(ctx),
       random: random,
-      amount: value,
+      amount: input_value,
       prize: 0,
-    }
-    let winned = vector::contains(&bet_values, random);
-    /// transfer funds to contract
-    join(config.pool, into_balance(coin));
-    if(winned) {
-      entity.prize = value(coins) * config.range * config.rate / vector::length(bet_values) / 10000;
-      /// transfer funds to player
-      public_transfer(split(config.pool, entity.prize, sender(ctx)));
-    }
+    };
+    let winned = vector::contains(&bet_values, &random);
 
-    share_object(entity);
+    // Join funds to contract pool
+    join(&mut config.pool, input_balance);
+    if(winned) {
+      entity.prize = input_value * (config.range as u64) * config.rate / vector::length(&bet_values) / 10000;
+      // Transfer funds to player
+      public_transfer(take(&mut config.pool, entity.prize, ctx), sender(ctx));
+    };
+
+    transfer(entity, sender(ctx));
+  }
+
+  /// Updates the config data
+  /// 
+  /// # Auth
+  /// - Only bearer of the AdminCap is allowed to call this function
+  public entry fun create_config<T>(
+    _admin_cap: &AdminCap,
+    range: u8,
+    min_value: u64,
+    max_value: u64,
+    rate: u64,
+    coins: Coin<T>,
+    ctx: &mut TxContext
+  ) {
+    let config = Config<T> {
+      id: object::new(ctx),
+      range: range,
+      min_value: min_value,
+      max_value: max_value,
+      rate: rate,
+      pool: into_balance(coins),
+    };
+
+    share_object(config);
   }
 
   /// Updates the config data
@@ -117,7 +135,7 @@ module roulette::roulette {
   /// # Auth
   /// - Only bearer of the AdminCap is allowed to call this function
   public entry fun update_config<T>(
-    _: &AdminCap,
+    _admin_cap: &AdminCap,
     config: &mut Config<T>,
     range: u8,
     min_value: u64,
@@ -129,7 +147,7 @@ module roulette::roulette {
     config.min_value = min_value;
     config.max_value = max_value;
     config.rate = rate;
-    config.pool = join(config.pool, into_balance(coins));
+    join(&mut config.pool, into_balance(coins));
   }
 
   
@@ -140,7 +158,7 @@ module roulette::roulette {
     recipient: address,
     ctx: &mut TxContext
   ) {
-    assert!(amount <= value(&config.pool), EPoolNotEnough);
+    assert!(amount <= value(&config.pool), E_POOL_NOT_ENOUGH);
     let coin = take(&mut config.pool, amount, ctx);
     public_transfer(coin, recipient);
   }

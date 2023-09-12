@@ -43,7 +43,7 @@ module roulette::drand {
 
   /// Converts the first 16 bytes of rnd to a u128 number and outputs its modulo with input n.
   /// Since n is u64, the output is at most 2^{-64} biased assuming rnd is uniformly random.
-  public fun safe_selection(n: u64, rnd: &vector<u8>): u64 {
+  public fun safe_selection(n: u8, rnd: &vector<u8>): u8 {
     assert!(vector::length(rnd) >= 16, E_INVALID_RND_LENGTH);
     
     let m: u128 = 0;
@@ -56,7 +56,7 @@ module roulette::drand {
     };
     let n_128 = (n as u128);
     let module_128  = m % n_128;
-    let res = (module_128 as u64);
+    let res = (module_128 as u8);
 
     res
   }
