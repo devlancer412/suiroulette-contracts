@@ -68,7 +68,7 @@ module roulette::roulette {
   public entry fun play<T>(
     config: &mut Config<T>,
     drand_sig: vector<u8>,
-    drand_prev_sig: vector<u8>,
+    drand_seed: vector<u8>,
     bet_values: vector<u8>,
     coins: Coin<T>,
     clock: &Clock,
@@ -80,9 +80,9 @@ module roulette::roulette {
     assert!(input_value >= config.min_value, E_INVALID_COIN_VALUE);
     assert!(input_value <= config.max_value, E_INVALID_COIN_VALUE);
 
-    verify_drand_signature(drand_sig, drand_prev_sig);
+    verify_drand_signature(drand_sig, drand_seed);
 
-    let digest = derive_randomness(drand_sig, timestamp_ms(clock));
+    let digest = derive_randomness(drand_seed, timestamp_ms(clock));
     let random = safe_selection(config.range, &digest) + 1;
 
     let entity = RouletteEntity {
