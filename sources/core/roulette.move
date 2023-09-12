@@ -6,6 +6,7 @@ module roulette::roulette {
   use sui::clock::{Clock, timestamp_ms};
   use sui::coin::{Coin, into_balance, take};
   use sui::balance::{Balance, join, value};
+  use sui::event::{emit};
   use roulette::drand::{verify_drand_signature, derive_randomness, safe_selection};
 
   // errors
@@ -31,6 +32,15 @@ module roulette::roulette {
 
   struct RouletteEntity has key {
     id: UID,
+    seed: vector<u8>,
+    player: address,
+    random: u8,
+    amount: u64,
+    prize: u64,
+  }
+
+  struct NewRouletteEntity has copy, drop {
+    seed: vector<u8>,
     player: address,
     random: u8,
     amount: u64,
@@ -87,6 +97,7 @@ module roulette::roulette {
 
     let entity = RouletteEntity {
       id: object::new(ctx),
+      seed: drand_seed,
       player: sender(ctx),
       random: random,
       amount: input_value,
@@ -101,6 +112,14 @@ module roulette::roulette {
       // Transfer funds to player
       public_transfer(take(&mut config.pool, entity.prize, ctx), sender(ctx));
     };
+
+    emit(NewRouletteEntity {
+      seed: drand_seed,
+      player: sender(ctx),
+      random: random,
+      amount: input_value,
+      prize: entity.prize,
+    });
 
     transfer(entity, sender(ctx));
   }
