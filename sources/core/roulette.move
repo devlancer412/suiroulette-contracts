@@ -99,14 +99,15 @@ module roulette::roulette {
     let use_hash = get_seed_use_hash(drand_seed, sender(ctx));
     assert!(validate_seed_use(&config.seed_uses, &use_hash) == false, E_USED_SEED);
 
-
     verify_drand_signature(drand_sig, drand_seed);
 
     // Join funds to contract pool
     join(&mut config.pool, input_balance);
 
+    let converted_range = ((config.range as u64) * 10000 - 1) / config.rate + 1;
+
     let digest = derive_randomness(drand_seed, timestamp_ms(clock));
-    let random = safe_selection(config.range, &digest) + 1;
+    let random = safe_selection((converted_range as u8), &digest) + 1;
 
     let entity = RouletteEntity {
       id: object::new(ctx),
@@ -119,7 +120,7 @@ module roulette::roulette {
 
     let winned = vector::contains(&bet_values, &random);
     if(winned) {
-      entity.prize = input_value * (config.range as u64) * config.rate / vector::length(&bet_values) / 10000;
+      entity.prize = input_value * (config.range as u64) / vector::length(&bet_values);
       // Transfer funds to player
       public_transfer(take(&mut config.pool, entity.prize, ctx), sender(ctx));
     };

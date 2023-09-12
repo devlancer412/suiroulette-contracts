@@ -9,14 +9,11 @@ module roulette::drand {
   const E_INVALID_RND_LENGTH: u64 = 0;
   const E_INVALID_PROOF: u64 = 1;
 
-  /// The genesis time of chain 8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce.
-  const GENESIS: u64 = 1595431050;
-  /// The public key of chain 8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce.
-  const DRAND_PK: vector<u8> = x"868f005eb8e6e4ca0a47c8a77ceaa5309a47978a7c71bc5cce96366b5d7a569937c529eeda66c7293784a9402801af31";
+  const DRAND_PK: vector<u8> = x"b3882aba835eb999ccfe5402845a6d5fea3ef3f93cbe7e25f065366fbd1a737139f0d18b10e3f3c4898cbf331000c82a";
 
   /// Check a drand output.
-  public fun verify_drand_signature(sig: vector<u8>, prev_sig: vector<u8>) {
-    let digest = sha2_256(prev_sig);
+  public fun verify_drand_signature(sig: vector<u8>, seed: vector<u8>) {
+    let digest = sha2_256(seed);
 
     // Verify the signature on the hash.
     assert!(bls12381::bls12381_min_pk_verify(&sig, &DRAND_PK, &digest), E_INVALID_PROOF);
