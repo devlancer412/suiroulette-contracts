@@ -1,7 +1,10 @@
 module roulette::roulette {
   use std::vector;
+  use sui::address;
+  use std::hash::sha2_256;
   use sui::tx_context::{TxContext, sender};
   use sui::object::{Self, UID};
+  use sui::vec_map::{Self, VecMap};
   use sui::transfer::{transfer, share_object, public_transfer};
   use sui::clock::{Clock, timestamp_ms};
   use sui::coin::{Coin, into_balance, take};
@@ -12,6 +15,7 @@ module roulette::roulette {
   // errors
   const E_INVALID_COIN_VALUE: u64 = 0;
   const E_POOL_NOT_ENOUGH: u64 = 1;
+  const E_USED_SEED: u64 = 2;
   
   /// Capability allowing the bearer to execute admin related tasks
   struct AdminCap has key {id: UID}
@@ -27,7 +31,9 @@ module roulette::roulette {
     /// The maximum amount of bet
     max_value: u64,
     /// The winning prize rate
-    rate: u64
+    rate: u64,
+    /// Seed use data
+    seed_uses: VecMap<vector<u8>, bool>,
   }
 
   struct RouletteEntity has key {
@@ -90,7 +96,14 @@ module roulette::roulette {
     assert!(input_value >= config.min_value, E_INVALID_COIN_VALUE);
     assert!(input_value <= config.max_value, E_INVALID_COIN_VALUE);
 
+    let use_hash = get_seed_use_hash(drand_seed, sender(ctx));
+    assert!(validate_seed_use(&config.seed_uses, &use_hash) == false, E_USED_SEED);
+
+
     verify_drand_signature(drand_sig, drand_seed);
+
+    // Join funds to contract pool
+    join(&mut config.pool, input_balance);
 
     let digest = derive_randomness(drand_seed, timestamp_ms(clock));
     let random = safe_selection(config.range, &digest) + 1;
@@ -103,10 +116,8 @@ module roulette::roulette {
       amount: input_value,
       prize: 0,
     };
-    let winned = vector::contains(&bet_values, &random);
 
-    // Join funds to contract pool
-    join(&mut config.pool, input_balance);
+    let winned = vector::contains(&bet_values, &random);
     if(winned) {
       entity.prize = input_value * (config.range as u64) * config.rate / vector::length(&bet_values) / 10000;
       // Transfer funds to player
@@ -144,6 +155,7 @@ module roulette::roulette {
       max_value: max_value,
       rate: rate,
       pool: into_balance(coins),
+      seed_uses: vec_map::empty(),
     };
 
     share_object(config);
@@ -180,6 +192,18 @@ module roulette::roulette {
     assert!(amount <= value(&config.pool), E_POOL_NOT_ENOUGH);
     let coin = take(&mut config.pool, amount, ctx);
     public_transfer(coin, recipient);
+  }
+
+  public fun get_seed_use_hash(seed: vector<u8>, player: address): vector<u8> {
+    let use_bytes = address::to_bytes(player);
+    vector::append(&mut use_bytes, seed);
+
+    sha2_256(use_bytes)
+  }
+
+  /// CHecks if the given coin type is supported
+  public fun validate_seed_use(seed_uses: &VecMap<vector<u8>, bool>, use_hash: &vector<u8>): bool {
+    vec_map::contains(seed_uses, use_hash)
   }
   
   #[test_only]
