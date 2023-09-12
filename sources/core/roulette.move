@@ -14,13 +14,14 @@ module roulette::roulette {
 
   // errors
   const E_INVALID_COIN_VALUE: u64 = 0;
-  const E_POOL_NOT_ENOUGH: u64 = 1;
-  const E_USED_SEED: u64 = 2;
+  const E_ROUND_NOT_AVAILABLE: u64 = 1;
+  const E_POOL_NOT_ENOUGH: u64 = 2;
+  const E_USED_SEED: u64 = 3;
   
   /// Capability allowing the bearer to execute admin related tasks
   struct AdminCap has key {id: UID}
   
-  struct Config<phantom T> has key {
+  struct RoundConfig<phantom T> has key {
     id: UID,
     /// The pool of roulette
     pool: Balance<T>,
@@ -30,6 +31,8 @@ module roulette::roulette {
     min_value: u64,
     /// The maximum amount of bet
     max_value: u64,
+    /// Total bet amount can bet
+    remaining_amount: u64,
     /// The winning prize rate
     rate: u64,
     /// Seed use data
@@ -62,12 +65,13 @@ module roulette::roulette {
     transfer(admin_cap, sender(ctx));
   }
 
-  public fun get_config_data<T>(self: &Config<T>): (u64, u8, u64, u64, u64) {
+  public fun get_config_data<T>(self: &RoundConfig<T>): (u64, u8, u64, u64, u64, u64) {
     (
       value<T>(&self.pool),
       self.range,
       self.min_value,
       self.max_value,
+      self.remaining_amount,
       self.rate,
     )
   }
@@ -82,7 +86,7 @@ module roulette::roulette {
   }
 
   public entry fun play<T>(
-    config: &mut Config<T>,
+    config: &mut RoundConfig<T>,
     drand_sig: vector<u8>,
     drand_seed: vector<u8>,
     bet_values: vector<u8>,
@@ -95,6 +99,8 @@ module roulette::roulette {
 
     assert!(input_value >= config.min_value, E_INVALID_COIN_VALUE);
     assert!(input_value <= config.max_value, E_INVALID_COIN_VALUE);
+    assert!(input_value <= config.remaining_amount, E_ROUND_NOT_AVAILABLE);
+    config.remaining_amount = config.remaining_amount - input_value;
 
     let use_hash = get_seed_use_hash(drand_seed, sender(ctx));
     assert!(validate_seed_use(&config.seed_uses, &use_hash) == false, E_USED_SEED);
@@ -145,15 +151,17 @@ module roulette::roulette {
     range: u8,
     min_value: u64,
     max_value: u64,
+    total_amount: u64,
     rate: u64,
     coins: Coin<T>,
     ctx: &mut TxContext
   ) {
-    let config = Config<T> {
+    let config = RoundConfig<T> {
       id: object::new(ctx),
       range: range,
       min_value: min_value,
       max_value: max_value,
+      remaining_amount: total_amount,
       rate: rate,
       pool: into_balance(coins),
       seed_uses: vec_map::empty(),
@@ -168,16 +176,18 @@ module roulette::roulette {
   /// - Only bearer of the AdminCap is allowed to call this function
   public entry fun update_config<T>(
     _admin_cap: &AdminCap,
-    config: &mut Config<T>,
+    config: &mut RoundConfig<T>,
     range: u8,
     min_value: u64,
     max_value: u64,
+    total_amount: u64,
     rate: u64,
     coins: Coin<T>
   ) {
     config.range = range;
     config.min_value = min_value;
     config.max_value = max_value;
+    config.remaining_amount = total_amount;
     config.rate = rate;
     join(&mut config.pool, into_balance(coins));
   }
@@ -185,7 +195,7 @@ module roulette::roulette {
   
   public entry fun withdraw<T>(
     _: &AdminCap,
-    config: &mut Config<T>,
+    config: &mut RoundConfig<T>,
     amount: u64,
     recipient: address,
     ctx: &mut TxContext
