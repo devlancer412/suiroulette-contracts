@@ -11,6 +11,7 @@ module roulette::roulette {
   use sui::balance::{Balance, join, value};
   use sui::event::{emit};
   use roulette::drand::{verify_drand_signature, derive_randomness, safe_selection};
+  use sui::package;
 
   // errors
   const E_INVALID_COIN_VALUE: u64 = 0;
@@ -56,8 +57,15 @@ module roulette::roulette {
     prize: u64,
   }
 
+  
+  // --------------- Witness ---------------
+
+  struct ROULETTE has drop {}
+
   // init
-  fun init(ctx: &mut TxContext) {
+  fun init(otw: ROULETTE, ctx: &mut TxContext) {
+    let publisher = package::claim(otw, ctx);
+    public_transfer(publisher, sender(ctx));
     let admin_cap = AdminCap {
       id: object::new(ctx),
     };
@@ -219,7 +227,7 @@ module roulette::roulette {
   }
   
   #[test_only]
-  public fun test_init(ctx: &mut TxContext) {
-    init(ctx)
+  public fun test_init(otw: ROULETTE, ctx: &mut TxContext) {
+    init(otw, ctx)
   }
 }

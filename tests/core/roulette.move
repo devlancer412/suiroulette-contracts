@@ -8,14 +8,16 @@ module roulette::roulette_test {
   use sui::test_scenario::{
     Scenario, begin, ctx, next_tx, end, take_from_sender, take_shared, return_to_sender, return_shared
   };
+  use sui::test_utils::create_one_time_witness;
   use roulette::roulette::{
-    AdminCap, RoundConfig, RouletteEntity, test_init, create_config, update_config, get_config_data, play
+    ROULETTE, AdminCap, RoundConfig, RouletteEntity, test_init, create_config, update_config, get_config_data, play
   };
   use roulette::common_test::{to_base};
   use roulette::test_accounts::{admin, player};
 
   public fun setup(scenario: &mut Scenario) {
-    test_init(ctx(scenario));
+    let otw = create_one_time_witness<ROULETTE>();
+    test_init(otw, ctx(scenario));
     next_tx(scenario, admin());
 
     let admin_cap = take_from_sender<AdminCap>(scenario);
