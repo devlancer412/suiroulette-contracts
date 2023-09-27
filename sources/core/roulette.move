@@ -19,6 +19,7 @@ module roulette::roulette {
   const E_ROUND_CLOSED: u64 = 3;
   const E_ALREADY_PLACED: u64 = 4;
   const E_ROUND_NOT_FINISHED: u64 = 5;
+  const E_ALREADY_FINISHED: u64 = 6;
   
   /// Capability allowing the bearer to execute admin related tasks
   struct AdminCap has key {id: UID}
@@ -50,6 +51,8 @@ module roulette::roulette {
     closing_time: u64,
     /// Players
     players: VecMap<vector<u8>, BetEntity>,
+    /// Random value
+    random: u8,
   }
 
   struct NewBetEntity has copy, drop {
@@ -119,6 +122,7 @@ module roulette::roulette {
       pool: into_balance(coins),
       closing_time: timestamp_ms(clock) + period,
       players: vec_map::empty(),
+      random: 0,
     };
 
     _roulette_config.current_round = _roulette_config.current_round + 1;
@@ -151,6 +155,7 @@ module roulette::roulette {
     clock: &Clock,
     ctx: &mut TxContext
   ) {
+    assert!(config.random == 0, E_ALREADY_FINISHED);
     let input_balance = into_balance(coins);
     let input_value = value(&input_balance);
     let timestamp = timestamp_ms(clock);
@@ -212,6 +217,7 @@ module roulette::roulette {
       idx = idx + 1;
     };
     
+    config.random = random;
     let remaining_value = value(&config.pool);
     let coin = take(&mut config.pool, remaining_value, ctx);
     public_transfer(coin, sender(ctx));
